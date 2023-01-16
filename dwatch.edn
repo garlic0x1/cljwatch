@@ -1,2 +1,2 @@
-{:dir "."
- :scripts ["echo hi"]}
+[{:dir "."
+  :scripts ["echo hi"]}]

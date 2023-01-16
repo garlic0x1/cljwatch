@@ -1,28 +1,32 @@
 (ns dwatch.core
   (:require [clojure.java.shell :as shell]
+            [clojure.core.async :as a :refer [<! >!! <! >!]]
             [clojure.java.io :as io]))
 
-(println (shell/sh "echo" "hi"))
 (defonce state (atom {}))
-(def conf (slurp "dwatch.edn"))
+(def conf (read-string (slurp "dwatch.edn")))
 
 (defn updated-file? [file]
   (let [fname (.getAbsolutePath file) lmod (.lastModified file)]
     (when (or (not (contains? @state (keyword fname)))
               (not= ((keyword fname) @state) lmod))
+      (println fname)
       (reset! state (conj @state {(keyword fname) lmod}))
       true)))
 
-(defn updated-dir? [directory]
-  (some? (doall (map updated-file? (file-seq directory)))))
-
-(let [directory (io/file ".")]
-  (updated-dir? directory))
-
-(defn set-interval [callback ms]
-  (future (while true (do (Thread/sleep ms) (callback)))))
+(defn updated-dir? [path]
+  (some true? (doall (map updated-file? (file-seq (io/file path))))))
 
 (defn job [item]
-  (run! #(println (shell/sh "-c" %)) (:scripts item)))
+  (if (updated-dir? (:dir item))
+      (println (map #(shell/sh "bash" "-c" %) (:scripts item)))
+      nil))
+
+(defn worker [item]
+  (a/go
+    (while true
+      (job item)
+      (<! (a/timeout 1000)))))
 -
-(doall (pmap #(set-interval (job %) 1000) conf))
+(defn main []
+  (doall (map worker conf)))
